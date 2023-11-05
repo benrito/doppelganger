@@ -22,9 +22,6 @@ import sounddevice as sd
 import soundfile as sf
 import numpy as np
 import random
-import nltk
-from nltk.corpus import stopwords
-from nltk.probability import FreqDist
 import speech_recognition as sr
 import subprocess
 import threading
@@ -45,7 +42,7 @@ voices_url = 'https://app.coqui.ai/api/v2/voices/xtts'
 samples_url = 'https://app.coqui.ai/api/v2/samples/xtts'
 
 # Load the sounds
-beep_start = 'media/beep_start.wav'
+beep_start = 'media/beep_start.mp3'
 beep_stop = 'media/beep_stop.wav'
 ambient_sounds = [
     'media/ambient1.mp3',
@@ -119,7 +116,7 @@ def loop():
 
         return True
 
-    MAX_ATTEMPTS = 3
+    MAX_ATTEMPTS = 1
     attempts = 0
 
     r = sr.Recognizer()
@@ -128,7 +125,7 @@ def loop():
         # Wait for taps
         if detect_taps():
             playsound(beep_start)
-
+        time.sleep(.25)
         with sr.Microphone() as source:
             print("\n\nI'm listening...")
             audio = r.listen(source)
@@ -145,13 +142,14 @@ def loop():
                 mirror.play_sound()
 
             def ambient_background(radiation, stop_event):
-                while not stop_event.is_set():
-                    playsound(radiation)
+                # while not stop_event.is_set():
+                playsound(radiation)
 
             # Create and start the thread
             stop_event = threading.Event()
             sound_thread = threading.Thread(target=ambient_background, args=(radiation, stop_event))
             mirror_thread = threading.Thread(target=mirror_recording)
+            # download_thread = threading.Thread(target=download_audio)
             sound_thread.daemon = True
             sound_thread.start()
 
@@ -199,7 +197,7 @@ def loop():
     max_tokens = 1024
 
     # Come up with responses
-    prompt = f"You are my subsconscious. Echo back my subliminal thoughts in eight one-liners, all in first person:\n\n'{revelation}.'\n\nRespond with a simple JSON array, strings only:"
+    prompt = f"I am engaging in autohypnosis. I will probe more deeply into what I may be repressing, three different ways, always in first-person: \n\n'{revelation}.'\n\n Respond with a simple JSON array, strings only:"
     # print("Prompt:\n\n"prompt)
     response = openai.Completion.create(
         engine=model_id,
@@ -346,6 +344,9 @@ def loop():
     #     with sd.OutputStream(device=device_id, channels=max_output_channels, samplerate=sound.frame_rate) as stream:
     #         stream.write(zeros)
 
+    # Wait for the audio generation to finish
+    # download_thread.join()
+
     def list_files_with_same_timestamp(directory):
         # List all files in the directory
         files = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
@@ -363,47 +364,13 @@ def loop():
 
         return timestamp_files
 
-    # def main():
-    #     directory = f"working/"
-    #     device_id = get_device_with_max_channels()  # Automatically get the device ID with the most channels
-    #     target_timestamp = timestamp
-    #     timestamp_files = list_files_with_same_timestamp(directory)
-    #     print(timestamp)
-    #     if target_timestamp not in timestamp_files:
-    #         print(f"No files with timestamp {target_timestamp} found.")
-    #         return
-
-    #     files = timestamp_files[target_timestamp]
-        
-    #     # Sort the files based on counter for a deterministic order
-    #     sorted_files = sorted(files, key=lambda x: x[0])
-        
-    #     max_output_channels = sd.query_devices(device_id)['max_output_channels']
-
-    #     threads = []  # To store thread objects
-
-    #     for index, (counter, filename) in enumerate(sorted_files):
-    #         # Cycle through the number of available channels
-    #         channel = index % max_output_channels
-
-    #         # Create a thread for each sound and start it immediately
-    #         t = threading.Thread(target=route_sound, args=(os.path.join(directory, filename), device_id, channel))
-    #         threads.append(t)
-    #         t.start()
-
-    #         # Sleep for 1.25 seconds before starting the next thread
-    #         time.sleep(1.25)
-
-    #     # Wait for all threads to complete
-    #     for t in threads:
-    #         t.join()
-
-    def main():
+    def showtime():
         directory = "working/"
         timestamp_files = list_files_with_same_timestamp(directory)
 
         if timestamp not in timestamp_files:
             print(f"No files with timestamp {timestamp} found.")
+            #wait two seconds, try again, a maximum of four times
             return
 
         sorted_files = sorted(timestamp_files[timestamp], key=lambda x: x[0])
@@ -411,14 +378,22 @@ def loop():
         for _, filename in sorted_files:
             filepath = os.path.join(directory, filename)
             data, samplerate = sf.read(filepath)
+            device_info = sd.query_devices(sd.default.device['output'], 'output')
+            num_channels = device_info['max_output_channels']
+
+            if data.ndim == 1:  # Check if it's mono
+                data = np.tile(data[:, np.newaxis], (1, num_channels))
+
             sd.play(data, 24000)
             sd.wait()
-            time.sleep(.25)
+            time.sleep(.5)
 
         print("Tap again...")
 
     if __name__ == "__main__":
-        main()
+        showtime()
+        playsound(beep_stop)
+        stop_event.set()  # Stop the radiation sound
 
 if __name__ == "__main__":
     try:
